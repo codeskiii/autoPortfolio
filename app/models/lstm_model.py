@@ -6,6 +6,9 @@ from sklearn.preprocessing import StandardScaler
 
 from tqdm import tqdm
 
+import asyncio
+import pandas as pd
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 class LSTM():
@@ -29,39 +32,46 @@ class LSTM():
     def _start_log(self) -> None:
         pass
 
-    def _evaluate_model_for_history(self,
-                                lstm_sizes = [25, 50],
-                                learning_rates = [0.001, 0.005],
-                                epochs_to_test = [50, 100],
-                                seq_lengths = [5, 10],
-                                optimizers = [Adam]
-                                ) -> int:
+    async def _evaluate_model_for_history(self,
+                                          lstm_sizes=[25, 50],
+                                          learning_rates=[0.001, 0.005],
+                                          epochs_to_test=[50, 100],
+                                          seq_lengths=[5, 10],
+                                          optimizers=[Adam]) -> int:
 
-        def _model_def(lstm_neurons: int) -> keras.Sequential:
+        def _model_def(lstm_neurons: int, seq_length: int) -> keras.Sequential:
             model = keras.Sequential([
                 keras.layers.LSTM(lstm_neurons, return_sequences=True, 
                                   input_shape=(seq_length, self.ticker['stock_history'].shape[1])),
-
                 keras.layers.LSTM(lstm_neurons, return_sequences=True),
-
                 keras.layers.LSTM(lstm_neurons),
-
                 keras.layers.Dense(20, activation='relu'),
                 keras.layers.Dense(1)
             ])
             return model
 
         best_score = float('inf')
-        
-        total_iterations = len(epochs_to_test)*len(optimizers)*len(learning_rates)*len(lstm_sizes)*len(seq_lengths)
+        total_iterations = len(epochs_to_test) * len(optimizers) * len(learning_rates) * len(lstm_sizes) * len(seq_lengths)
 
         scaler = StandardScaler()
 
-        with tqdm(total=total_iterations, desc=f"Evaulation of LSTM for {self.ticker['stock_symbol']}") as pbar:
+        async def _get_score(model: keras.Sequential, epochs: int, 
+                             train_data: np.array, train_labels: np.array,
+                             val_data: np.array, val_labels: np.array) -> float:
+            
+            history = model.fit(train_data, train_labels, epochs=epochs,
+                                validation_data=(val_data, val_labels),
+                                verbose=0)  
+                                
+            val_loss = min(history.history['val_loss'])
+            return val_loss
+
+        tasks = []
+        with tqdm(total=total_iterations, desc=f"Evaluation of LSTM for {self.ticker['stock_symbol']}") as pbar:
             for seq_length in seq_lengths:
                 stock_history = self.ticker['stock_history'].values
                 X = self._create_sequences(scaler.fit_transform(stock_history), seq_length)
-                y = self.ticker['stock_history']['Close'].shift(-50).dropna()
+                y = self.ticker['stock_history']['Close'].shift(-50).dropna().values
                 X = X[:len(y)]
                 
                 for epochs in epochs_to_test:
@@ -70,7 +80,7 @@ class LSTM():
                             for lstm_neurons in lstm_sizes:
                                 opt = optimizer(learning_rate=learning_rate)
                                 
-                                model = _model_def(lstm_neurons)
+                                model = _model_def(lstm_neurons, seq_length)
                                 model.compile(optimizer=opt, loss='mean_squared_error')
 
                                 # Split data into train and validation sets
@@ -78,16 +88,15 @@ class LSTM():
                                 train_data, val_data = X[:train_size], X[train_size:]
                                 train_labels, val_labels = y[:train_size], y[train_size:]
 
-                                history = model.fit(train_data, train_labels, epochs=epochs,
-                                                    validation_data=(val_data, val_labels),
-                                                    verbose=1)  
-                                
-                                val_loss = min(history.history['val_loss'])
-                                if val_loss < best_score:
-                                    best_score = val_loss
-                                
-                                pbar.update(1)
+                                tasks.append(
+                                    asyncio.create_task(
+                                        _get_score(model, epochs, train_data, train_labels, val_data, val_labels)
+                                    )
+                                )
 
+                                pbar.update(1)
+        
+        best_score = min(await asyncio.gather(*tasks))
         return best_score
 
     def _evaluate_model_for_income(self) -> int:
@@ -99,13 +108,11 @@ class LSTM():
     def _evaluate_model_for_total_score(self) -> int:
         pass
 
-    def evaluate(self) -> int:
-
-        hist_ew = self._evaluate_model_for_history()
-        #income_ew = self._evaluate_model_for_income()
-        #cflow_ew = self._evaluate_model_for_cashflow()
-
-        #t = self._evaluate_model_for_total_score()
+    async def evaluate(self) -> int:
+        hist_ew = await self._evaluate_model_for_history()
+        # income_ew = self._evaluate_model_for_income()
+        # cflow_ew = self._evaluate_model_for_cashflow()
+        # t = self._evaluate_model_for_total_score()
 
         return hist_ew
-        #return (hist_ew + income_ew + cflow_ew + t * 3)/6
+        # return (hist_ew + income_ew + cflow_ew + t * 3) / 6

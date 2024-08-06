@@ -4,6 +4,8 @@ import json
 import warnings
 from dataLoader import Loader
 
+import asyncio
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 class DatasetCreator:

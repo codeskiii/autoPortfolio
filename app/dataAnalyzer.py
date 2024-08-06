@@ -3,24 +3,35 @@ from models.lstm_model import LSTM
 
 from termcolor import colored
 
-class analyzer:
+import asyncio
+
+class Analyzer:
     def __init__(self) -> None:
         print(colored("INITIALIZING DATASET CREATOR", "red"))
-        dcreator = DatasetCreator()
-        print(colored("SUCCESFUL", "red"))
+        self.dcreator = DatasetCreator()
+        print(colored("SUCCESSFUL", "red"))
         print(colored("DOWNLOADING DATA", "red"))
-        self.data = dcreator.get_datasets()
-        print(colored("SUCCESFUL", "red"))
-    
-    def perform_mdoel_creation(self) -> None:
+        self.data = self.dcreator.get_datasets()
+        print(colored("SUCCESSFUL", "red"))
+
+    async def _run_model(self, ticker) -> None:
+        lstm = LSTM(ticker)
+        result = await lstm.evaluate()
+        print(colored(f"Model evaluation for {ticker['stock_symbol']} completed with score: {result}", "yellow"))
+
+    async def perform_model_creation(self) -> None:
         print(colored("TRAINING MODELS", "green"))
+        tasks = []
         for ticker in self.data:
-            lstm = LSTM(ticker)
-            print(lstm.evaluate())
+            tasks.append(asyncio.create_task(self._run_model(ticker)))
+        
+        await asyncio.gather(*tasks)
+        print(colored("ALL MODELS TRAINED SUCCESSFULLY", "green"))
 
 # Debug ONLY
 if __name__ == '__main__':
-    analyzer = analyzer()
+    analyzer = Analyzer()
     print(colored("TESTING MODEL CREATION", "green"))
-    analyzer.perform_mdoel_creation()
-    print(colored("SUCCESFUL", "green"))
+    
+    # Running the asynchronous function in the event loop
+    asyncio.run(analyzer.perform_model_creation())
