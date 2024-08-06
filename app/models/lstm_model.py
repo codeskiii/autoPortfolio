@@ -2,6 +2,7 @@ import keras
 from keras.optimizers import Adam, RMSprop, SGD
 import numpy as np
 import warnings
+from sklearn.preprocessing import StandardScaler
 
 from tqdm import tqdm
 
@@ -29,15 +30,11 @@ class LSTM():
         pass
 
     def _evaluate_model_for_history(self,
-                                lstm_sizes = [10, 25, 50, 100, 150],
-                                learning_rates = [0.001, 0.005, 0.01, 0.05, 0.1],
-                                epochs_to_test = [50, 100, 150],
-                                seq_lengths = [5, 10, 20, 30, 40],
-                                optimizers = [
-                                    Adam,
-                                    RMSprop,
-                                    SGD
-                                ]
+                                lstm_sizes = [25, 50],
+                                learning_rates = [0.001, 0.005],
+                                epochs_to_test = [50, 100],
+                                seq_lengths = [5, 10],
+                                optimizers = [Adam]
                                 ) -> int:
 
         def _model_def(lstm_neurons: int) -> keras.Sequential:
@@ -58,11 +55,14 @@ class LSTM():
         
         total_iterations = len(epochs_to_test)*len(optimizers)*len(learning_rates)*len(lstm_sizes)*len(seq_lengths)
 
+        scaler = StandardScaler()
+
         with tqdm(total=total_iterations, desc=f"Evaulation of LSTM for {self.ticker['stock_symbol']}") as pbar:
             for seq_length in seq_lengths:
                 stock_history = self.ticker['stock_history'].values
-                X = self._create_sequences(stock_history, seq_length)
+                X = self._create_sequences(scaler.fit_transform(stock_history), seq_length)
                 y = self.ticker['stock_history']['Close'].shift(-50).dropna()
+                X = X[:len(y)]
                 
                 for epochs in epochs_to_test:
                     for optimizer in optimizers:
@@ -80,7 +80,7 @@ class LSTM():
 
                                 history = model.fit(train_data, train_labels, epochs=epochs,
                                                     validation_data=(val_data, val_labels),
-                                                    verbose=0)  # Set verbose to 0 to disable logging
+                                                    verbose=1)  
                                 
                                 val_loss = min(history.history['val_loss'])
                                 if val_loss < best_score:
