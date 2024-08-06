@@ -19,14 +19,11 @@ class LSTM():
         self.ticker = ticker_dict
 
     def _create_sequences(self, data, seq_length):
-        xs = []
-        ys = []
-        for i in range(len(data) - seq_length):
-            x = data[i:i+seq_length]
-            y = data[i+seq_length]
-            xs.append(x)
-            ys.append(y)
-        return np.array(xs), np.array(ys)
+        data_array = []
+        for i in range(len(data) - seq_length + 1):
+            seq = data[i:i+seq_length]
+            data_array.append(seq)
+        return np.array(data_array)
     
     def _start_log(self) -> None:
         pass
@@ -64,7 +61,8 @@ class LSTM():
         with tqdm(total=total_iterations, desc=f"Evaulation of LSTM for {self.ticker['stock_symbol']}") as pbar:
             for seq_length in seq_lengths:
                 stock_history = self.ticker['stock_history'].values
-                X, y = self._create_sequences(stock_history, seq_length)
+                X = self._create_sequences(stock_history, seq_length)
+                y = self.ticker['stock_history']['Close'].shift(-50).dropna()
                 
                 for epochs in epochs_to_test:
                     for optimizer in optimizers:
