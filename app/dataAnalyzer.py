@@ -5,6 +5,8 @@ from termcolor import colored
 
 import asyncio
 
+import time
+
 class Analyzer:
     def __init__(self) -> None:
         print(colored("INITIALIZING DATASET CREATOR", "red"))
@@ -34,4 +36,8 @@ if __name__ == '__main__':
     print(colored("TESTING MODEL CREATION", "green"))
     
     # Running the asynchronous function in the event loop
+    t0 = time.time()
     asyncio.run(analyzer.perform_model_creation())
+    t1 = time.time()
+
+    print(t1-t0)
